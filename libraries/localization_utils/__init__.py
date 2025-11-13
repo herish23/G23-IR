@@ -21,6 +21,8 @@ from .data_format import (
     save_timing
 )
 
+from .sparse_loader import load_sparse_sensor_data
+
 from .noise_models import SensorNoiseModel
 
 from .config_loader import load_config

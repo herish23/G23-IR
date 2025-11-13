@@ -1,0 +1,25 @@
+## kidnap problem blueprint for each algorithm 
+## we just make the robto dispaper at timestamp 500 
+
+experiment:
+  name: "kidnap"
+  description: "Kidnapped robot recovery test - reset belief mid-run"
+
+kidnapping:
+  timestep: 500                    ## when to trigger kidnapping (update step number)
+  recovery_threshold: 0.5          ## error below this = considered recovered (meters)
+  tracking_window: 200             ## steps after kidnap to track recovery metrics
+
+  ## amcl 
+  particle_filter:
+    reset_mode: "global"           
+    n_particles_kidnap: 5000       
+
+  ekf:
+    reset_covariance: 100.0        ## set P diagonal to this value (high uncertainty)
+    reset_cov_x: 100.0             ## x position variance (m^2)
+    reset_cov_y: 100.0             ## y position variance (m^2)
+    reset_cov_theta: 3.14          ## theta variance (rad^2)
+
+  markov:
+    reset_mode: "uniform"          ## reset all grid cells to uniform probability
