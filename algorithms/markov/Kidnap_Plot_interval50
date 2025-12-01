@@ -1,5 +1,5 @@
 """
-Markov Grid Based Localization (GPU) - Single File Experiment
+Markov Grid Based Localization (GPU) - Kidnapped Robot Experiment
 
 This is a self-contained script to run a single localization experiment.
 It runs the localization and VISUALIZES the result in a live plot.
@@ -8,7 +8,7 @@ It does NOT save a CSV file.
 SETTINGS:
 - Noise: 10%
 - Sparsity: 10
-- Batch Interval: 32
+- Batch Interval: 50
 """
 
 import numpy as np
@@ -55,7 +55,7 @@ except ImportError:
 # -----------------------------------------------------------------------------
 CONFIG = {
     'experiment': {
-        'name': "noise_10_percent_sparse10_batch32"
+        'name': "noise_10_percent_sparse10_batch50"
     },
     'data': {
         # --- 1. Path to the CLEAN sensor data ---
@@ -88,7 +88,7 @@ CONFIG = {
         'initial_pose_hint': [-0.46, -0.55],     # (x_m, y_m)
         'initial_uncertainty_m': 0.5,        # Standard deviation (0.5m)
         
-        'batch_interval': 32 # Process every 32 steps
+        'batch_interval': 50 # <-- EDITED: Process every 50 steps
     },
     'random_seed': 42
 }
@@ -505,7 +505,7 @@ def main():
     )
     print(f"Likelihood field computed in {time.time() - start_time:.2f}s")
     
-    # --- 3. Initialize Belief ---
+    # --- 3. Initialize Belief (NOW WITH HINT) ---
     print("Initializing belief grid...")
     
     use_hint = config['localization'].get('use_pose_hint', False)
@@ -542,6 +542,7 @@ def main():
         return
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
+    # --- END OF NEW INITIALIZE ---
     
     # --- 4. Load Sensor Data (and apply noise) ---
     print("Loading and applying noise to sensor data...")
@@ -551,16 +552,18 @@ def main():
         return
     print(f"Loaded {len(sensor_log)} full data points.")
     
-    # --- BATCH THE DATA ---
+    # --- EDITED: BATCH THE DATA ---
     batch_interval = config['localization'].get('batch_interval', 1)
     if batch_interval > 1:
         sensor_log = sensor_log[::batch_interval]
         print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
-    # --- END OF BATCH ---
+    # --- END OF EDIT ---
 
     # --- 5. Run Localization Loop ---
     last_gt_pose = None
     total_steps = len(sensor_log)
+    
+    # --- NEW: Initialize list to store errors ---
     all_position_errors = []
     
     # --- PLOTTING: Setup the interactive plot ---
@@ -617,6 +620,7 @@ def main():
 
         # --- Prediction Step (Motion Model) ---
         if last_gt_pose:
+            # This now calculates the total motion over the last 50 steps
             dx_m = current_gt_pose[0] - last_gt_pose[0]
             dy_m = current_gt_pose[1] - last_gt_pose[1]
             motion = (dx_m, dy_m)
@@ -638,11 +642,13 @@ def main():
             verbose=False 
         )
 
-        # --- Find Best Estimate ---
+        # --- Find Best Estimate & Print ---
+        # --- GPU/CPU BUG FIX ---
+        # Move data back to CPU for argmax and printing (if it was on GPU)
         if GPU_ENABLED:
             belief_grid_cpu = belief_grid_gpu.get()
         else:
-            belief_grid_cpu = belief_grid_gpu 
+            belief_grid_cpu = belief_grid_gpu # It's already a numpy array
         
         est_grid_y, est_grid_x = np.unravel_index(
             np.argmax(belief_grid_cpu), 
@@ -651,15 +657,25 @@ def main():
         est_x_m, est_y_m = grid_to_world(est_grid_x, est_grid_y, map_info)
         max_prob = np.max(belief_grid_cpu)
         
+        prob_at_gt = 0.0
+        if 0 <= gt_grid_x < map_info.width and 0 <= gt_grid_y < map_info.height:
+             # --- TYPO FIX: Changed prob_at_gty to prob_at_gt ---
+             prob_at_gt = belief_grid_cpu[gt_grid_y, gt_grid_x]
+        else:
+            print(f"  Warning: Ground truth ({gt_grid_x}, {gt_grid_y}) is outside map bounds (0-{map_info.width}, 0-{map_info.height}).")
+        
+        # --- NEW: Calculate and store error ---
         current_error_m = math.dist((gt_x_m, gt_y_m), (est_x_m, est_y_m))
         all_position_errors.append(current_error_m)
-
+        # --- END OF NEW BLOCK ---
+        
         # --- PLOTTING: Update the live plot ---
         gt_dot.set_data([gt_x_m], [gt_y_m])
         est_dot.set_data([est_x_m], [est_y_m])
         
         # Update the belief heatmap
         belief_viz.set_data(belief_grid_cpu)
+        # Re-normalize the color scale, but cap it to avoid flashes
         belief_viz.set_clim(vmin=0, vmax=np.clip(max_prob, 0.001, 1.0))
         
         # Redraw the canvas
