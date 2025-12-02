@@ -1,24 +1,30 @@
-## this is the first commit in the brnach amcl for the project
+## AMCL+KLD SAMPLING MAIN FILE FOR LOCALISATION
+## all the configurations used here are from my own callibrations 
+## further calibration resulted in worse results so we stopped at the final locked config
+## it was brought from 0.8m or error to 0.3m error at the point of submission.
+
 import sys
 import random
 import numpy as np
+from pathlib import Path
 
-sys.path.append("../../libraries")
+## use dependencies from the main branch to call data files for the algorithm
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(BASE_DIR / "libraries"))
 from localization_utils import load_sensor_data, load_map, compute_likelihood_field
 
-## load sensor data and map
-sensor_data = load_sensor_data('../../data/sensor_data_clean.csv')
+RANDOM_SEED = 42
+random.seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
 
-map_info = load_map('../../maps/epuck_world_map.pgm', '../../maps/epuck_world_map.yaml')
 
-print(f"Loaded {len(sensor_data)} timesteps")
-print(f"Map size: {map_info.width} x {map_info.height}")
+## load sensor data, liklihood filed and then ogm map
+sensor_data = load_sensor_data(str(BASE_DIR / 'data/sensor_data_clean.csv'))
+map_info = load_map(str(BASE_DIR / 'maps/epuck_world_map.pgm'), str(BASE_DIR / 'maps/epuck_world_map.yaml'))
+likelihood_field = compute_likelihood_field(map_info,sigma=0.2,max_dist=1.0)
 
-## compute likelihood field
-likelihood_field = compute_likelihood_field(map_info, max_dist=2.0)
-print("Likelihood field ready")
 
-## Particle class to initiate 
+## Particle class to initiate spreads
 class Particle:
       def __init__(self, x, y, theta, weight=1.0):
           self.x = x           
@@ -28,21 +34,20 @@ class Particle:
 
 
 ## spread particles across map bounds
-def initialize_particles(num_particles, map_info):
+def initialize_particles(num_particles, map_info, init_pose=None, uncertainty=None):
     particles = []
 
-    ## map boundaries
-    x_min = map_info.origin_x
-    x_max = map_info.origin_x + (map_info.width * map_info.resolution)
-    y_min = map_info.origin_y
-    y_max = map_info.origin_y + (map_info.height * map_info.resolution)
+    if init_pose is not None and uncertainty is not None:
+        ## pose tracking mode - gaussian around known starting pose
+        x0, y0, theta0 = init_pose
+        std_x, std_y, std_theta = uncertainty
 
-    for i in range(num_particles):
-        x = random.uniform(x_min, x_max)
-        y = random.uniform(y_min, y_max)
-        theta = random.uniform(-np.pi, np.pi)  
-        w = 1.0 / num_particles  
-        particles.append(Particle(x, y, theta, w))
+        for i in range(num_particles):
+            x = np.random.normal(x0, std_x)
+            y = np.random.normal(y0, std_y)
+            theta = np.random.normal(theta0, std_theta)
+            w = 1.0 / num_particles
+            particles.append(Particle(x, y, theta, w))
 
     return particles
 
@@ -58,12 +63,11 @@ def normalize_weights(particles):
         for p in particles:
             p.weight = w
 
-
 def get_mean_pose(particles):
     mean_x = sum(p.x * p.weight for p in particles)
     mean_y = sum(p.y * p.weight for p in particles)
 
-    # circular mean for theta (handles wraparound)
+    # circular mean for theta (- to +)
     sin_theta = sum(np.sin(p.theta) * p.weight for p in particles)
     cos_theta = sum(np.cos(p.theta) * p.weight for p in particles)
     mean_theta = np.arctan2(sin_theta, cos_theta)
@@ -72,11 +76,10 @@ def get_mean_pose(particles):
 
 ## motion model - mapping 
 ## ($\alpha_1$, $\alpha_2$, $\alpha_3$, $\alpha_4$)
-alpha1 = 0.2  # rot noise from rotational motion
-alpha2 = 0.2  # rot noise from translation motion
-alpha3 = 0.2  # translation noise from translation
-alpha4 = 0.2  # translation noise from rotation
-# TODO: might need to tune these based on test results
+alpha1 = 0.005  # rot noise from rotational motion (Reis 2020)
+alpha2 = 0.005 # rot noise from translation motion
+alpha3 = 0.02 # translation noise from translation
+alpha4 = 0.02 # translation noise from rotation
 
 ## sample from gaussian noise
 def sample_normal(b):
@@ -111,7 +114,7 @@ def motion_update(particles, odom_prev, odom_curr):
         ## translation (x to x1)
         trans_hat = delta_trans + sample_normal(alpha3 * delta_trans**2 + alpha4 * (delta_rot1**2 + delta_rot2**2))
         
-        ## fina rotation (orient)
+        ## final rotation (orient)
         rot2_hat = delta_rot2 + sample_normal(alpha1 * delta_rot2**2 + alpha2 * delta_trans**2)
 
         ## apply the noisy motion to particles 
@@ -122,20 +125,15 @@ def motion_update(particles, odom_prev, odom_curr):
         # normalize theta back to [-pi, pi]
         p.theta = np.arctan2(np.sin(p.theta), np.cos(p.theta))
 
-
-## Sensor model 
-
 ## sensor params for matching lidar to map
-z_hit = 0.95  # probabliity for accurate measuremtns
-z_rand = 0.05  # random noise value
-sigma_hit = 0.2  # std deviation for the gaussian noises
+z_hit = 0.87  # probabliity for accurate measuremtns
+z_rand = 0.13  # random noise value
+sigma_hit = 0.15  # std deviation for the gaussian noises
+max_range = 1.8
 
-## lidar max from turtlebot
-max_range = 3.5
 
-## we use 60 only from 360 that we have logged in csv
-num_beams = 60
-# check : using 60 for speed, might need more for accuracy 
+num_beams = 60  # optimal: tested 60, 90, 180 - 60 is best based on calibrations
+
 
 ## Correction step - weight particles using lidar scan matching
 def sensor_update(particles, lidar_ranges, likelihood_field, map_info):
@@ -183,7 +181,7 @@ def sensor_update(particles, lidar_ranges, likelihood_field, map_info):
         p.weight = np.exp(log_w)  # convert back from log space
 
 
-## low variance sampling to reduce sampling error
+## particles resample with LVS
 def resample(particles):
     n = len(particles)
 
@@ -198,19 +196,16 @@ def resample(particles):
     for p in particles:
         p.weight /= w_sum
 
-    # low variance resampling
     new_p = []
     r = random.uniform(0, 1.0/n)  # random start
     c = particles[0].weight
     i = 0
-    # CHECK : if this needs optimization for large particle sets
 
     for m in range(n):
         u = r + m / n
         while u > c:
             i += 1
             c += particles[i].weight
-        # copy particle
         new_p.append(Particle(particles[i].x, particles[i].y, particles[i].theta))
 
     # reset weights to uniform
@@ -220,41 +215,22 @@ def resample(particles):
     return new_p
 
 
-if __name__ == "__main__":
-    particles = initialize_particles(100, map_info)
-    print("particles", len(particles))
-    print("first particle ", particles[0].x, particles[0].y)
-    # motion test
-    gt0 = sensor_data['ground_truth'][0]
-    gt1 = sensor_data['ground_truth'][1]
-    prev_odom = (gt0[0], gt0[1], gt0[2])
-    curr_odom = (gt1[0], gt1[1], gt1[2])
-    motion_update(particles, prev_odom, curr_odom)
-    print("after motion", particles[0].x, particles[0].y)
-    # sensor update
-    lidar_data = sensor_data['lidar_scans'][1]
-    sensor_update(particles, lidar_data, likelihood_field, map_info)
-    normalize_weights(particles)
-
-    # try resample
-    particles = resample(particles)
-    print("resampled:", len(particles))
-    mx, my, mtheta = get_mean_pose(particles)
-    print(f"est {mx:.3f}, {my:.3f}, {mtheta:.3f}")
-    print(f"gt  {gt1[0]:.3f}, {gt1[1]:.3f}, {gt1[2]:.3f}")
-    err = np.sqrt((mx-gt1[0])**2 + (my-gt1[1])**2)
-    print(f"error: {err:.3f}m")
-
-
-## KLD adaptive sampling params
-n_min = 100
+## KLD adaptive sampling params - (FINAL LOCKED CONFIG)
+n_min = 1000  # optimal balance from the locled config
 n_max = 5000
 epsilon = 0.05  # KLD error bound
 z_quantile = 2.58  # chi-square (99% confidence)
 bin_size = 0.5  # 50cm bins for x,y
 
 
-# test and change according to the output 
+## effective sample size (N_eff) for adaptive resampling
+def compute_neff(particles):
+    weights = np.array([p.weight for p in particles])
+    weight_sum_sq = np.sum(weights ** 2)
+    if weight_sum_sq > 0:
+        return 1.0 / weight_sum_sq
+    else:
+        return len(particles)
 
 ## sequential KLD resampling 
 def kld_resample(particles, map_info):
@@ -280,8 +256,8 @@ def kld_resample(particles, map_info):
     #sample one at a time until KLD bound satisfied
     new_p = []
     bins = {}
-    k = 0  # bins with support
-    M_x = 0  # particle count
+    k = 0  
+    M_x = 0 
 
     while True:
         # compute threshold from KLD bound
@@ -303,12 +279,12 @@ def kld_resample(particles, map_info):
                 idx = i
                 break
 
-        # add particle
+        ## add particle
         p_new = Particle(particles[idx].x, particles[idx].y, particles[idx].theta)
         new_p.append(p_new)
         M_x += 1
 
-        # check if new bin (map-relative binning)
+        # check if new bin (relative to the map)
         bx = int(np.floor((p_new.x - map_info.origin_x) / bin_size))
         by = int(np.floor((p_new.y - map_info.origin_y) / bin_size))
         theta_wrap = p_new.theta + np.pi  # shift [-pi,pi] to [0,2pi]
@@ -325,32 +301,30 @@ def kld_resample(particles, map_info):
     return new_p
 
 
-    p_spread = initialize_particles(500, map_info)
-    p_spread_kld = kld_resample(p_spread, map_info)
-    print(f"spread {len(p_spread)}, {len(p_spread_kld)}")
-
-    p_conv = []
-    for i in range(500):
-        x = -0.5 + random.uniform(-0.1, 0.1)
-        y = -0.5 + random.uniform(-0.1, 0.1)
-        theta = random.uniform(-0.2, 0.2)
-        p_conv.append(Particle(x, y, theta, 1.0/500))
-
-    p_conv_kld = kld_resample(p_conv, map_info)
-    print(f"converged {len(p_conv)} , {len(p_conv_kld)}")
-
-
 ## test the integrations on the sensor_data
-def run_amcl(sensor_data, map_info, n_particles=500, use_kld=True):
-    particles = initialize_particles(n_particles, map_info)
-    n_steps = len(sensor_data['timestamps'])
-    estimates = []
-    print(f"\n{n_steps} timesteps")
+def run_amcl(sensor_data, map_info, n_particles=1000, use_kld=True, update_skip=10):
 
-    for t in range(1, n_steps):
-        # odom from gt
-        prev_odom = sensor_data['ground_truth'][t-1]
-        curr_odom = sensor_data['ground_truth'][t]
+## sampled every 10th ( 5hZ ) of trajectory as mentioned on the paper
+
+    #start from known initial pose with uncertainty (all of the experimented algo follows this)
+    init_pose = tuple(sensor_data['ground_truth'][0]) 
+    uncertainty = (0.3, 0.3, 0.5)  
+    particles = initialize_particles(n_particles, map_info, init_pose, uncertainty)
+
+    n_steps = len(sensor_data['timestamps'])
+    timestamps = sensor_data['timestamps']
+    estimates = []
+
+    print(f"\n{n_steps} timesteps total")
+    print(f"update every {update_skip} steps = {50.0/update_skip:.1f}Hz update rate")
+    print(f"init pose: ({init_pose[0]:.2f}, {init_pose[1]:.2f}, {init_pose[2]:.2f})")
+
+    prev_t = 0
+
+    for t in range(update_skip, n_steps, update_skip):
+        ## use actual odometry columns for motion model
+        prev_odom = sensor_data['odometry'][prev_t]
+        curr_odom = sensor_data['odometry'][t]
 
         motion_update(particles, prev_odom, curr_odom)
 
@@ -359,19 +333,49 @@ def run_amcl(sensor_data, map_info, n_particles=500, use_kld=True):
         sensor_update(particles, lidar, likelihood_field, map_info)
         normalize_weights(particles)
 
-        # resample
-        if use_kld:
-            particles = kld_resample(particles, map_info)
-        else:
-            particles = resample(particles)
+        ## N_eff adaptive resampling
+        neff = compute_neff(particles)
+        neff_threshold = 0.6 * len(particles)
+
+        if neff < neff_threshold:
+            if use_kld:
+                particles = kld_resample(particles, map_info)
+            else:
+                particles = resample(particles)
+
         est_x, est_y, est_theta = get_mean_pose(particles)
-        estimates.append((est_x, est_y, est_theta))
-        if t % 50 == 0:
+        estimates.append((timestamps[t], est_x, est_y, est_theta))
+
+        if len(estimates) % 25 == 0:
             gt = sensor_data['ground_truth'][t]
             err = np.sqrt((est_x - gt[0])**2 + (est_y - gt[1])**2)
-            print(f"t={t}: est=({est_x:.2f},{est_y:.2f}), gt=({gt[0]:.2f},{gt[1]:.2f}), err={err:.3f}m, n={len(particles)}")
+            print(f"t={timestamps[t]:.1f}s: est=({est_x:.2f},{est_y:.2f}), gt=({gt[0]:.2f},{gt[1]:.2f}), err={err:.3f}m, n={len(particles)}, N_eff={neff:.0f}")
+
+        prev_t = t
 
     return estimates
 
-    estimates = run_amcl(sensor_data, map_info, n_particles=100, use_kld=True)
+
+## full AMCL test
+if __name__ == "__main__":
+    print("\n" + "="*60)
+    print("RUNNING FULL AMCL")
+    print("="*60)
+    estimates = run_amcl(sensor_data, map_info, n_particles=1000, use_kld=True, update_skip=10)
+
+    ## compute error metrics
+    errors = []
+    for est in estimates:
+        t_idx = np.argmin(np.abs(sensor_data['timestamps'] - est[0]))
+        gt = sensor_data['ground_truth'][t_idx] 
+        err = np.sqrt((est[1] - gt[0])**2 + (est[2] - gt[1])**2) ## euclidean distance
+        errors.append(err)
+
+    errors = np.array(errors)
+    rmse = np.sqrt(np.mean(errors**2)) ## rsme 
+
+    print(f"RMSE:       {rmse:.3f}m")
+    print(f"Mean error: {np.mean(errors):.3f}m")
+    print(f"Max error:  {np.max(errors):.3f}m")
+    print(f"Std dev:    {np.std(errors):.3f}m")
 

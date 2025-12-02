@@ -1,0 +1,38 @@
+{
+  "algorithm": "AMCL+KLD",
+  "test_type": "sparsity",
+  "test_level": 16,
+  "sparse_dataset": "sensor_data_sparse_16.csv",
+  "rays_available": 22,
+  "rays_original": 360,
+  "base_random_seed": 42,
+  "runs": [
+    {
+      "rmse_m": 0.3415134790937665,
+      "mean_error_m": 0.3112114695546378,
+      "median_error_m": 0.34703941864394516,
+      "max_error_m": 0.5617872645542411,
+      "min_error_m": 0.033194870560531956,
+      "std_error_m": 0.14063739765926875,
+      "final_error_m": 0.4620345889404188,
+      "avg_particles": 2002.6711409395973,
+      "min_particles": 1000,
+      "max_particles": 2712,
+      "avg_neff": 1430.5747632212115,
+      "min_neff": 597.2231877183909,
+      "max_neff": 2161.4460147763643,
+      "total_time_s": 27.694760900000016,
+      "avg_update_time_ms": 92.93543926174502,
+      "max_update_time_ms": 286.7716999999992,
+      "num_updates": 298,
+      "run": 1
+    }
+  ],
+  "aggregate": {
+    "avg_rmse_m": 0.3415134790937665,
+    "std_rmse_across_runs": 0.0,
+    "avg_mean_error_m": 0.3112114695546378,
+    "avg_particles": 2002.6711409395973,
+    "avg_total_time_s": 27.694760900000016
+  }
+}

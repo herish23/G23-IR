@@ -1,80 +1,193 @@
-# Comparative Evaluation of EKF, Markov Grid, and Adaptive Monte Carlo (AMCL with KLD-Sampling) Localization for Mobile Robots
+## AMCL with KLD-Sampling Localisation Implementation
+
+This implementation demonstrates AMCL+KLD algorithm for mobile robot localisation with systematic calibration and comprehensive robustness testing under three stress conditions:
+
+- **Odometry Noise:** 10%-80% noise levels (8 test conditions)
+- **LiDAR Data Sparsity:** 2×-32× beam reduction (5 test conditions)
+- **Kidnapped Robot Problem:** Global relocalization (Kidnap Robot Problem)
+
+**Baseline Accuracy: 0.306m**
+### Baseline Performance (After Calibration)
+Check the callibration section for this tuning process 
+
+| Metric | Value |
+|--------|-------|
+| **RMSE** | 0.306 m |
+| **Mean Error** | 0.306 m |
+| **Max Error** | 0.572 m |
+| **Std Deviation** | 0.135 m |
+| **Avg Particles** | 1000-1500 |
+| **Avg Runtime** | 443 ms/step |
 
 ---
 
-## Running the Simulation
+## Project Structure
 
-To start:
-
-1. Open Webots
-2. Load the world file: `worlds/exp.wbt`
-
-The world has a TurtleBot3 with LiDAR on a checkboard arena with 5 wooden box obstacles.
+```
+algorithms/amcl/
+├── calibration/                    # Folder for the Calibration (Methodology for tuning)
+├── amcl.py                         # Base AMCL+KLD implementation
+├── noise_test_amcl.py              # Noise experiments script
+├── sparsity_test_amcl.py           # Data sparsity script
+├── kidnap_test_amcl.py             # Kidnap test script
+└── experiment_results/             # Experiment outputs (CSV, JSON and VIDEO)
+    ├── noise_tests/                # 8 noise levels
+    ├── sparsity_tests/             # 5 sparsity levels
+    └── kidnap_tests/               # 1 kidnap
+```
 
 ---
 
-## Data Collection
+## Dependencies & Packages
 
-### How it Works
+### Standard Python Libraries
+- **NumPy**
+- **OpenCV (cv2)**
+- **Matplotlib**
+- **Webots R2023b**
 
-The `data_logger` controller runs the robot through a predefined trajectory and collects sensor data for offline processing. It logs:
 
-* LiDAR range readings (360 points)
-* Commanded velocities (v, w)
-* Ground truth position (x, y, theta) from Webots supervisor
+**No specialised package was used** the implementation was done from scratch using the resources stated.
 
-All data is saved to:
 
+---
+
+## Running the Experiments
+
+### Prerequisites
+
+Ensure the following files are available:
 ```
 data/sensor_data_clean.csv
+data/sensor_data_sparse_2.csv
+data/sensor_data_sparse_4.csv
+data/sensor_data_sparse_8.csv
+data/sensor_data_sparse_16.csv
+data/sensor_data_sparse_32.csv
+maps/epuck_world_map.pgm
+maps/epuck_world_map.yaml
 ```
-## Trajectories
-
-Trajectory files are in `maps/traj/`:
-
-* **traj_debug_square.csv** — Simple 0.20m x 0.20m square path (default). Good for initial testing.
-* **traj_eval_complex.csv** — Longer, more complex path for full evaluation.
-
-You can change which trajectory is used by editing the `TRAJ_PATH` variable in `controllers/data_logger/data_logger.py` or set the `TRAJ` environment variable.
 
 ---
 
-## Map Files
+### 1. Baseline Test
 
-The map files needed for localization are in `maps/`:
+**Run baseline experiment:**
+```bash
+cd algorithms/amcl
+python amcl.py
+```
 
-* `epuck_world_map.pgm` — occupancy grid map
-* `epuck_world_map.yaml` — map metadata (resolution, origin, etc)
-
-These were generated from the Webots world and match the 5 box obstacles in the simulation.
-
-**Note:** If you change the world layout, you'll need to regenerate these files.
-
----
-
-## Configuration Files
-
-Multiple config files are provided in `configs/` to test different conditions:
-
-* `config_baseline.yaml` — no extra noise
-* `config_noise_XX.yaml` — adds 10%-80% noise to sensors
-* `config_init_X.yaml` — tests recovery from wrong initial pose
-* `config_sparse_4.yaml` — uses only 1/4 of LiDAR points
-
-These let you test how robust each algorithm is under different conditions.
+This runs the calibrated AMCL+KLD algorithm on clean sensor data to establish baseline performance.
 
 ---
 
-## Offline Processing
+### 2. Noise Robustness Test
 
-After collecting data, you'll run the three localization algorithms (EKF, Markov Grid, AMCL) on the saved CSV data. Each algorithm will:
+**Run noise experiment:**
+```bash
+cd algorithms/amcl
+python noise_test_amcl.py --noise 60
+```
 
-1. Load the sensor data
-2. Process odometry + LiDAR readings
-3. Estimate robot position at each timestep
-4. Compare against ground truth to calculate error metrics
+**Arguments:**
+- `--noise`: Noise level as percentage (10, 20, 30, 40, 50, 60, 70, 80)
 
-This setup lets us do fair comparisons since all algorithms process the exact same data.
+---
+
+### 3. Data Sparsity Test
+
+**Run data sparsity experiment:**
+```bash
+cd algorithms/amcl
+python sparsity_test_amcl.py --sparsity 16
+```
+
+**Arguments:**
+- `--sparsity`: Beam reduction factor (2, 4, 8, 16, 32)
+  - **2×** = 180 beams (every 2nd ray)
+  - **4×** = 90 beams (every 4th ray)
+  - **8×** = 45 beams (every 8th ray)
+  - **16×** = 22 beams (every 16th ray)
+  - **32×** = 11 beams (every 32nd ray)
+
+
+### 4. Kidnapped Robot Test
+- Robot tracks normally for 10 seconds
+- Robot teleported ~1.0m to new location
+
+**Run kidnap robot experiment:**
+```bash
+cd algorithms/amcl
+python kidnap_test_amcl.py
+```
+
+
+
+
+---
+
+## Calibration Process & Final Configuration
+
+### Calibration Strategy
+
+Parameters were tuned through 4-stage systematic optimization:
+
+1. **Baseline** - Default Fox et al. parameters from literature
+2. **Sensor Model** - Likelihood field tuning (beams, sigma_hit, z_hit/z_rand)
+3. **Motion Model** - Odometry noise parameters (alpha1-4)
+4. **KLD-Sampling** - Adaptive resampling (epsilon, bin_size, n_min/n_max)
+
+### Final Locked Parameters
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `n_particles` | 1000 | Initial particle count |
+| `n_min` | 1000 | Minimum particles (KLD lower bound) |
+| `n_max` | 5000 | Maximum particles (KLD upper bound) |
+| `num_beams` | 60 | LiDAR rays used (of 360 total) |
+| `sigma_hit` | 0.2 | Likelihood field standard deviation (m) |
+| `z_hit` | 0.87 | Hit probability weight |
+| `z_rand` | 0.13 | Random measurement weight |
+| `alpha1` | 0.005 | Rotation noise from rotation |
+| `alpha2` | 0.005 | Rotation noise from translation |
+| `alpha3` | 0.02 | Translation noise from translation |
+| `alpha4` | 0.02 | Translation noise from rotation |
+| `epsilon` | 0.05 | KLD error tolerance |
+| `bin_size` | 0.5 | Spatial discretization for KLD (m) |
+| `z_quantile` | 2.58 | Z-score for 99% confidence (KLD) |
+| `neff_threshold` | 0.6 | Resampling trigger (60% of particles) |
+
+
+
+---
+
+
+
+## Credits & References
+
+### Core Algorithm Implementation
+
+**Probabilistic Robotics:**
+- S. Thrun, "Probabilistic robotics," *Communications of the ACM*, vol. 45, no. 3, pp. 52–57, Mar. 2002.
+  - [PDF Link](https://docs.ufpr.br/~danielsantos/ProbabilisticRobotics.pdf)
+
+**KLD-Sampling:**
+- D. Fox, "KLD-sampling: Adaptive particle filters," in *Advances in Neural Information Processing Systems*, vol. 14, 2001.
+  - [PDF Link](https://proceedings.neurips.cc/paper/2001/file/c5b2cebf15b205503560c4e8e6d1ea78-Paper.pdf)
+
+**AMCL Implementation:**
+- **Vorpal, H. (2019).** "AMCL Reverse Engineering."
+  - [Blog Post](https://vorpal.se/posts/2019/apr/04/amcl-reverse-engineering/)
+  - Practical implementation details and algorithmic flow
+
+**Likelihood Field Model:**
+- **Feng, C.** "Likelihood Fields for Range Finders." *Probabilistic Robotics GitBook*.
+  - [Tutorial](https://calvinfeng.gitbook.io/probabilistic-robotics/basics/robot-perception/02-likelihood-fields-for-range-finders)
+
+**Parameter Calibration Reference:**
+- G. dos Reis, G. da Silva, O. Morandin Junior, and K. C. Teixeira Vivaldini, "An extended analysis on tuning the parameters of adaptive Monte Carlo localization ROS package in an automated guided vehicle," *The International Journal of Advanced Manufacturing Technology*, vol. 117, pp. 1–21, 2021.
+  - DOI: [10.1007/s00170-021-07437-0](https://doi.org/10.1007/s00170-021-07437-0)
 
 ---
 
