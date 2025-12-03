@@ -1,12 +1,6 @@
 """
-Markov Grid Based Localization (GPU) - Single File Experiment
-
-This is a self-contained script to run a single localization experiment.
-It runs the localization and VISUALIZES the result in a live plot.
-It does NOT save a CSV file.
-
 SETTINGS:
-- Noise: 10%
+- Noise: 70%
 - Sparsity: 10
 - Batch Interval: 32
 """
@@ -73,7 +67,7 @@ CONFIG = {
             
             # --- NOISE SETTINGS ---
             'noise_std': 0.02,     # 2cm Gaussian noise
-            'outlier_rate': 0.70,  # 10% of readings are random
+            'outlier_rate': 0.70,  # 70% of readings are random
             # ----------------------
             
             'sparsity': 10,        # Use 1-in-10 rays

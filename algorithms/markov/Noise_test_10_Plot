@@ -1,10 +1,4 @@
 """
-Markov Grid Based Localization (GPU) - Single File Experiment
-
-This is a self-contained script to run a single localization experiment.
-It runs the localization and VISUALIZES the result in a live plot.
-It does NOT save a CSV file.
-
 SETTINGS:
 - Noise: 10%
 - Sparsity: 10
@@ -24,11 +18,11 @@ from dataclasses import dataclass
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
 
-# --- PLOTTING IMPORT ---
+# PLOTTING IMPORT
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 
-# --- Try to import GPU libraries ---
+
 try:
     # We need both cupy and the cupy-enabled scipy extensions
     import cupy as cp
@@ -74,7 +68,6 @@ CONFIG = {
             # --- NOISE SETTINGS ---
             'noise_std': 0.02,     # 2cm Gaussian noise
             'outlier_rate': 0.10,  # 10% of readings are random
-            # ----------------------
             
             'sparsity': 10,        # Use 1-in-10 rays
         }
@@ -94,7 +87,6 @@ CONFIG = {
 }
 
 # HELPER FUNCTIONS
-
 @dataclass
 class MapInfo:
     """ Container for map metadata """
@@ -237,7 +229,7 @@ def load_sensor_data(config):
                     }
                     clean_sensor_log.append(data_point)
                 except (ValueError, IndexError):
-                    pass # Skip malformed rows
+                    pass 
                     
     except FileNotFoundError:
         print(f"FATAL ERROR: Sensor data file not found at: {csv_file_path}")
@@ -470,7 +462,7 @@ def main():
     config = CONFIG 
     print(f"Loading configuration from internal CONFIG dictionary...")
     
-    # --- 1. Load Map ---
+    # 1. Load Map
     print("\nLoading map...")
     try:
         map_info = load_map(
@@ -488,7 +480,7 @@ def main():
         print(f"An error occurred loading the map: {e}")
         return
 
-    # --- 2. Pre-compute Likelihood Field ---
+    # 2. Pre-compute Likelihood Field
     print("Pre-computing likelihood field (this may take a moment)...")
     start_time = time.time()
     likelihood_field_gpu = compute_likelihood_field(
@@ -498,7 +490,7 @@ def main():
     )
     print(f"Likelihood field computed in {time.time() - start_time:.2f}s")
     
-    # --- 3. Initialize Belief ---
+    # 3. Initialize Belief
     print("Initializing belief grid...")
     
     use_hint = config['localization'].get('use_pose_hint', False)
@@ -536,7 +528,7 @@ def main():
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
     
-    # --- 4. Load Sensor Data (and apply noise) ---
+    # 4. Load Sensor Data (and apply noise)
     print("Loading and applying noise to sensor data...")
     sensor_log = load_sensor_data(config)
     if not sensor_log:
@@ -544,19 +536,19 @@ def main():
         return
     print(f"Loaded {len(sensor_log)} full data points.")
     
-    # --- BATCH THE DATA ---
+    # BATCH THE DATA 
     batch_interval = config['localization'].get('batch_interval', 1)
     if batch_interval > 1:
         sensor_log = sensor_log[::batch_interval]
         print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
-    # --- END OF BATCH ---
+    # END OF BATCH
 
-    # --- 5. Run Localization Loop ---
+    # 5. Run Localization Loop
     last_gt_pose = None
     total_steps = len(sensor_log)
     all_position_errors = []
     
-    # --- PLOTTING: Setup the interactive plot ---
+    # PLOTTING: Setup the interactive plot
     plt.ion()
     fig, ax = plt.subplots(figsize=(12, 12)) # Make it slightly bigger
     
@@ -581,7 +573,6 @@ def main():
     est_dot, = ax.plot([], [], 'rx', markersize=12, mew=2, label='Estimated')
     
     # Create the belief heatmap overlay
-    # We use a dummy array to start
     belief_viz = ax.imshow(np.zeros_like(map_data_cpu), cmap='viridis', 
                            origin='lower', extent=map_extent, 
                            alpha=0.6, vmin=0.0, vmax=0.01)
@@ -591,12 +582,12 @@ def main():
     ax.set_title("Markov Localization Live View")
     ax.legend()
     
-    # --- PAUSE FOR FULLSCREEN ---
+    # PAUSE FOR FULLSCREEN
     print("\n\n--- PLOT INITIALIZED ---")
     print("Plot window is open. You have 10 seconds to make it full screen and start recording.")
     plt.show(block=False)
-    plt.pause(10.0) # Pause for 10 seconds
-    # ----------------------------
+    plt.pause(10.0)
+
 
     for i, sensor_data in enumerate(sensor_log):
         print(f"\rProcessing Step {i+1}/{total_steps}", end='')
@@ -608,7 +599,7 @@ def main():
         
         gt_grid_x, gt_grid_y = world_to_grid(gt_x_m, gt_y_m, map_info)
 
-        # --- Prediction Step (Motion Model) ---
+        # Prediction Step (Motion Model)
         if last_gt_pose:
             dx_m = current_gt_pose[0] - last_gt_pose[0]
             dy_m = current_gt_pose[1] - last_gt_pose[1]
@@ -621,7 +612,7 @@ def main():
                 config['localization']['motion_diffusion_factor']
             )
 
-        # --- Correction Step (Sensor Model) ---
+        # Correction Step (Sensor Model)
         belief_grid_gpu = correction_step(
             belief_grid_gpu, 
             sensor_data, 
@@ -647,7 +638,7 @@ def main():
         current_error_m = math.dist((gt_x_m, gt_y_m), (est_x_m, est_y_m))
         all_position_errors.append(current_error_m)
 
-        # --- PLOTTING: Update the live plot ---
+        # PLOTTING: Update the live plot
         gt_dot.set_data([gt_x_m], [gt_y_m])
         est_dot.set_data([est_x_m], [est_y_m])
         
@@ -659,11 +650,11 @@ def main():
         fig.canvas.draw()
         fig.canvas.flush_events()
         plt.pause(0.01) 
-        # --- END OF PLOTTING ---
+        # END OF PLOTTING
 
         last_gt_pose = current_gt_pose
     
-    # --- Calculate and return average error ---
+    # Calculate and return average error
     if all_position_errors: 
         average_error_m = sum(all_position_errors) / len(all_position_errors)
         print(f"\nAverage Position Error: {average_error_m:.3f} m")

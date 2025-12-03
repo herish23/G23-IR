@@ -1,10 +1,6 @@
 """
-Markov Grid Based Localization (GPU) - Single File Experiment
-
-This is a self-contained script to run a single localization experiment.
-All configuration is in the 'CONFIG' dictionary at the top.
-It loads clean data, applies the noise specified in 'CONFIG', 
-runs the localization, and saves the results to a CSV.
+Noise: 30%
+Sparsity: 10 for faster processing
 """
 
 import numpy as np
@@ -20,7 +16,6 @@ from dataclasses import dataclass
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
 
-# --- Try to import GPU libraries ---
 try:
     # We need both cupy and the cupy-enabled scipy extensions
     import cupy as cp
@@ -42,26 +37,18 @@ except ImportError:
         return cpu_distance_transform_edt(arr)
 
 
-# -----------------------------------------------------------------------------
 # CONFIGURATION
-# -----------------------------------------------------------------------------
-# All settings are in this dictionary. Update the paths to match your system.
-# *** IMPORTANT: All 3 paths MUST be FULL, ABSOLUTE paths ***
-# -----------------------------------------------------------------------------
 CONFIG = {
     'experiment': {
-        'name': "noise_10_percent_sparse1_batch32" # <-- EDITED
+        'name': "noise_30_percent_sparse1_batch32" 
     },
     'data': {
-        # --- 1. Path to the CLEAN sensor data ---
         'sensor_data_csv_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\data\sensor_data_clean.csv',
         
-        # --- 2. Paths to your map files ---
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
         
-        # --- 3. Path to save the output CSV ---
-        'output_csv_path': os.path.join(os.path.expanduser('~'), 'Desktop', 'localization_results_10_percent_sparse1_batch32.csv') # <-- EDITED
+        'output_csv_path': os.path.join(os.path.expanduser('~'), 'Desktop', 'localization_results_30_percent_sparse1_batch32.csv') # <-- EDITED
     },
     'sensors': {
         'lidar': {
@@ -71,10 +58,10 @@ CONFIG = {
             
             # --- THIS IS WHERE THE NOISE IS DEFINED ---
             'noise_std': 0.02,     # 2cm Gaussian noise
-            'outlier_rate': 0.30,  # 10% of readings are random
+            'outlier_rate': 0.30,  # 30% of readings are random
             # --- END OF NOISE DEFINITION ---
             
-            'sparsity': 10,       # <-- EDITED: Use 1-in-1 rays (all 360)
+            'sparsity': 10,     
         }
     },
     'localization': {
@@ -90,15 +77,10 @@ CONFIG = {
     },
     'random_seed': 42
 }
-# -----------------------------------------------------------------------------
 # END OF CONFIGURATION
-# -----------------------------------------------------------------------------
 
 
-# -----------------------------------------------------------------------------
 # HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
-
 @dataclass
 class MapInfo:
     """ Container for map metadata """
@@ -250,7 +232,7 @@ def load_sensor_data(config):
         print(f"Error loading sensor data: {e}")
         return None
 
-    # --- NEW: Apply noise based on the config ---
+    # NEW: Apply noise based on the config
     noisy_sensor_log = apply_sensor_noise(clean_sensor_log, config)
     
     return noisy_sensor_log
@@ -331,10 +313,8 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
     else:
         return 0.0 
 
-# -----------------------------------------------------------------------------
-# END OF HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
 
+# END OF HELPER FUNCTIONS
 
 def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
     """
@@ -482,7 +462,7 @@ def main():
     config = CONFIG 
     print(f"Loading configuration from internal CONFIG dictionary...")
     
-    # --- 1. Load Map ---
+    # 1. Load Map
     print("\nLoading map...")
     try:
         map_info = load_map(
@@ -495,7 +475,7 @@ def main():
         print(f"An error occurred loading the map: {e}")
         return
 
-    # --- 2. Pre-compute Likelihood Field ---
+    # 2. Pre-compute Likelihood Field
     print("Pre-computing likelihood field...")
     start_time = time.time()
     likelihood_field_gpu = compute_likelihood_field(
@@ -505,7 +485,7 @@ def main():
     )
     print(f"Likelihood field computed in {time.time() - start_time:.2f}s")
     
-    # --- 3. Initialize Belief ---
+    # 3. Initialize Belief
     print("Initializing belief grid...")
     
     use_hint = config['localization'].get('use_pose_hint', False)
@@ -543,7 +523,7 @@ def main():
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
     
-    # --- 4. Load Sensor Data (and apply noise) ---
+    # 4. Load Sensor Data (and apply noise)
     print("Loading and applying noise to sensor data...")
     sensor_log = load_sensor_data(config)
     if not sensor_log:
@@ -551,19 +531,19 @@ def main():
         return
     print(f"Loaded {len(sensor_log)} full data points.")
     
-    # --- BATCH THE DATA ---
+    # BATCH THE DATA
     batch_interval = config['localization'].get('batch_interval', 1)
     if batch_interval > 1:
         sensor_log = sensor_log[::batch_interval]
         print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
-    # --- END OF BATCH ---
+    # END OF BATCH 
 
-    # --- 5. Run Localization Loop ---
+    # 5. Run Localization Loop
     last_gt_pose = None
     total_steps = len(sensor_log)
     all_position_errors = []
     
-    # --- Setup CSV file for writing ---
+    # Setup CSV file for writing 
     output_csv_path = config['data']['output_csv_path']
     print(f"Opening output CSV file at: {output_csv_path}")
     try:
@@ -577,7 +557,7 @@ def main():
     except IOError as e:
         print(f"FATAL ERROR: Could not open CSV file for writing: {e}")
         return
-    # --- END OF CSV SETUP ---
+    # END OF CSV SETUP
 
     for i, sensor_data in enumerate(sensor_log):
         # We will just print a simple progress bar
@@ -592,7 +572,7 @@ def main():
         
         gt_grid_x, gt_grid_y = world_to_grid(gt_x_m, gt_y_m, map_info)
 
-        # --- Prediction Step (Motion Model) ---
+        # Prediction Step (Motion Model)
         if last_gt_pose:
             dx_m = current_gt_pose[0] - last_gt_pose[0]
             dy_m = current_gt_pose[1] - last_gt_pose[1]
@@ -605,7 +585,7 @@ def main():
                 config['localization']['motion_diffusion_factor']
             )
 
-        # --- Correction Step (Sensor Model) ---
+        # Correction Step (Sensor Model)
         belief_grid_gpu = correction_step(
             belief_grid_gpu, 
             sensor_data, 
@@ -615,7 +595,7 @@ def main():
             verbose=False # Keep it quiet during batch runs
         )
 
-        # --- Find Best Estimate ---
+        # Find Best Estimate
         if GPU_ENABLED:
             belief_grid_cpu = belief_grid_gpu.get()
         else:
@@ -628,11 +608,11 @@ def main():
         est_x_m, est_y_m = grid_to_world(est_grid_x, est_grid_y, map_info)
         max_prob = np.max(belief_grid_cpu)
         
-        # --- Store Error ---
+        # Store Error
         current_error_m = math.dist((gt_x_m, gt_y_m), (est_x_m, est_y_m))
         all_position_errors.append(current_error_m)
 
-        # --- Write to CSV ---
+        # Write to CSV
         csv_writer.writerow([
             sensor_data['timestamp'],
             gt_x_m, gt_y_m,
@@ -643,11 +623,11 @@ def main():
 
         last_gt_pose = current_gt_pose
     
-    # --- Close CSV file ---
+    # Close CSV file 
     csv_file.close()
     print(f"\nResults saved to {output_csv_path}")
 
-    # --- Calculate and return average error ---
+    # Calculate and return average error
     if all_position_errors: 
         average_error_m = sum(all_position_errors) / len(all_position_errors)
         print(f"Average Position Error: {average_error_m:.3f} m")

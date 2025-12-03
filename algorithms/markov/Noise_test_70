@@ -41,16 +41,11 @@ except ImportError:
     def gpu_distance_transform_edt(arr):
         return cpu_distance_transform_edt(arr)
 
-
-# -----------------------------------------------------------------------------
 # CONFIGURATION
-# -----------------------------------------------------------------------------
-# All settings are in this dictionary. Update the paths to match your system.
-# *** IMPORTANT: All 3 paths MUST be FULL, ABSOLUTE paths ***
-# -----------------------------------------------------------------------------
+
 CONFIG = {
     'experiment': {
-        'name': "noise_20_percent_sparse10_batch32" # <-- EDITED
+        'name': "noise_70_percent_sparse10_batch32" # <-- EDITED
     },
     'data': {
         # --- 1. Path to the CLEAN sensor data ---
@@ -69,10 +64,10 @@ CONFIG = {
             'fov_deg': 360,      # Field of view in degrees
             'max_range': 3.5,    # Max sensor range
             
-            # --- THIS IS WHERE THE NOISE IS DEFINED ---
+            # THIS IS WHERE THE NOISE IS DEFINED
             'noise_std': 0.02,     # 2cm Gaussian noise
-            'outlier_rate': 0.70,  # 20% of readings are random
-            # --- END OF NOISE DEFINITION ---
+            'outlier_rate': 0.70,  # 70% of readings are random
+            # END OF NOISE DEFINITION
             
             'sparsity': 10,       
         }
@@ -331,10 +326,7 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
     else:
         return 0.0 
 
-# -----------------------------------------------------------------------------
 # END OF HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
-
 
 def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
     """
