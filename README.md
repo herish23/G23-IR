@@ -33,6 +33,8 @@ This implementation was built from scratch in Python using the following mechani
    c) **N_eff Threshold**
    - Triggers resampling when N_eff < 60% of total particles
 
+**No particle injection or random spread od particles was implemented as this is a textbook based implementation and not packaged version of AMCL + KLD-Sampling**
+
 ### Algorithm Flow
 
 1. **Initialize:** Spawn particles around known start
