@@ -34,10 +34,8 @@ except ImportError:
 # CONFIGURATION
 CONFIG = {
     'data': {
-        # --- 1. UPDATE THIS PATH ---
         'sensor_data_csv_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\data\sensor_data_clean.csv',
         
-        # --- 2. UPDATE THESE PATHS ---
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
     },
@@ -210,7 +208,7 @@ def compute_likelihood_field(map_info, sigma=0.1, max_dist=2.0):
     max_cells = max_dist / map_info.resolution
     field[dist > max_cells] = 0.01
 
-    # Normalize (optional, but good practice)
+    # Normalize 
     field = field / field.max()
 
     return field
@@ -428,7 +426,7 @@ def main():
     config = CONFIG 
     print(f"Loading configuration from internal CONFIG dictionary...")
     
-    # --- 1. Load Map ---
+    # 1. Load Map
     print("\nLoading map...")
     try:
         map_info = load_map(
@@ -446,7 +444,7 @@ def main():
         print(f"An error occurred loading the map: {e}")
         return
 
-    # --- 2. Pre-compute Likelihood Field ---
+    # 2. Pre-compute Likelihood Field
     print("Pre-computing likelihood field (this may take a moment)...")
     start_time = time.time()
     likelihood_field_gpu = compute_likelihood_field(
@@ -456,7 +454,7 @@ def main():
     )
     print(f"Likelihood field computed in {time.time() - start_time:.2f}s")
     
-    # --- 3. Initialize Belief (NOW WITH HINT) ---
+    # 3. Initialize Belief (NOW WITH HINT)
     print("Initializing belief grid...")
     
     use_hint = config['localization'].get('use_pose_hint', False)
@@ -501,7 +499,7 @@ def main():
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
     
-    # --- 4. Load Sensor Data ---
+    # 4. Load Sensor Data
     print("Loading sensor data...")
     sensor_log = load_sensor_data(config)
     if not sensor_log:
@@ -509,12 +507,12 @@ def main():
         return
     print(f"Loaded {len(sensor_log)} full data points.")
     
-    # --- EDITED: BATCH THE DATA ---
+    # EDITED: BATCH THE DATA
     batch_interval = 32 
     sensor_log = sensor_log[::batch_interval]
     print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
 
-    # --- 5. Run Localization Loop ---
+    # 5. Run Localization Loop
     last_gt_pose = None
     total_steps = len(sensor_log)
     
@@ -531,7 +529,7 @@ def main():
         
         gt_grid_x, gt_grid_y = world_to_grid(gt_x_m, gt_y_m, map_info)
 
-        # --- Prediction Step (Motion Model) ---
+        # Prediction Step (Motion Model)
         if last_gt_pose:
             dx_m = current_gt_pose[0] - last_gt_pose[0]
             dy_m = current_gt_pose[1] - last_gt_pose[1]
@@ -548,7 +546,7 @@ def main():
         else:
             print("   Skipping prediction step (first frame).")
 
-        # --- Correction Step (Sensor Model) ---
+        # Correction Step (Sensor Model)
         belief_grid_gpu = correction_step(
             belief_grid_gpu, 
             sensor_data, 
@@ -558,7 +556,7 @@ def main():
             verbose=True
         )
 
-        # --- Find Best Estimate & Print ---
+        # Find Best Estimate & Print
         if GPU_ENABLED:
             belief_grid_cpu = belief_grid_gpu.get()
         else:
@@ -579,7 +577,7 @@ def main():
         else:
             print(f"   Warning: Ground truth ({gt_grid_x}, {gt_grid_y}) is outside map bounds (0-{map_info.width}, 0-{map_info.height}).")
 
-        # --- 6. Print and Compare ---
+        # 6. Print and Compare
         print("\n   --- Results ---")
         print(f"   Step Time: {time.time() - start_step_time:.2f}s")
         print(f"   Ground Truth (World): ({gt_x_m:.2f}m, {gt_y_m:.2f}m)")
@@ -600,7 +598,7 @@ def main():
     
     print("\n--- Localization Complete ---")
 
-    # --- Final Summary ---
+    # Final Summary
     if all_position_errors:
         average_error_m = sum(all_position_errors) / len(all_position_errors)
         print("\n--- Final Summary ---")
