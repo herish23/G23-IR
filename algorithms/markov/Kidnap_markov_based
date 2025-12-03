@@ -1,9 +1,4 @@
 """
-Markov Grid Based Localization (GPU) - Kidnapped Robot Experiment
-
-This script runs a localization experiment where the robot is "kidnapped"
-(its belief is reset to uniform) at a specific timestep to test recovery.
-
 SETTINGS:
 - Noise: 10% (Integrated)
 - Sparsity: 10
@@ -24,7 +19,7 @@ from dataclasses import dataclass
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
 
-# --- Try to import GPU libraries ---
+# Try to import GPU libraries
 try:
     import cupy as cp
     from cupyx.scipy.ndimage import distance_transform_edt as gpu_distance_transform_edt
@@ -41,9 +36,7 @@ except ImportError:
         return cpu_distance_transform_edt(arr)
 
 
-# -----------------------------------------------------------------------------
 # CONFIGURATION
-# -----------------------------------------------------------------------------
 CONFIG = {
     'experiment': {
         'name': "kidnap_recovery_noise10_sparse10"
@@ -60,10 +53,9 @@ CONFIG = {
             'fov_deg': 360,
             'max_range': 3.5,
             
-            # --- 10% NOISE ENABLED ---
+            # 10% NOISE ENABLED
             'noise_std': 0.02,     
             'outlier_rate': 0.10, 
-            # -------------------------
             
             'sparsity': 10, 
         }
@@ -80,7 +72,7 @@ CONFIG = {
         # Use 1 to see the recovery curve clearly
         'batch_interval': 1 
     },
-    # --- KIDNAPPING ENABLED ---
+    # KIDNAPPING ENABLED
     'kidnapping': {
         'enabled': True,           # <-- ENABLED
         'timestep': 500,           # Trigger kidnap at step 500
@@ -90,13 +82,8 @@ CONFIG = {
     },
     'random_seed': 42
 }
-# -----------------------------------------------------------------------------
 
-
-# -----------------------------------------------------------------------------
 # HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
-
 @dataclass
 class MapInfo:
     """ Container for map metadata """
@@ -486,7 +473,7 @@ def main():
         progress = (i + 1) / total_steps
         print(f"\rStep {i+1}/{total_steps} [{'#'*int(progress*20):<20}]", end='')
         
-        # --- KIDNAPPING EVENT ---
+        # KIDNAPPING EVENT
         if kidnap_enabled and i == kidnap_timestep:
             print(f"\n\n*** KIDNAPPING ROBOT AT STEP {i} ***")
             print("Resetting belief to uniform distribution (Global Uncertainty).")

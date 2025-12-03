@@ -52,10 +52,9 @@ CONFIG = {
         'name': "noise_10_percent_sparse10_batch32"
     },
     'data': {
-        # --- 1. Path to the CLEAN sensor data ---
+
         'sensor_data_csv_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\data\sensor_data_clean.csv',
         
-        # --- 2. Paths to your map files ---
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
     },
@@ -65,7 +64,7 @@ CONFIG = {
             'fov_deg': 360,      # Field of view in degrees
             'max_range': 3.5,    # Max sensor range
             
-            # --- NOISE SETTINGS ---
+            # NOISE SETTINGS
             'noise_std': 0.02,     # 2cm Gaussian noise
             'outlier_rate': 0.10,  # 10% of readings are random
             
