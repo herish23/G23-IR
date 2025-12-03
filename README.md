@@ -96,7 +96,7 @@ The system estimates the robot's location by finding the cell with the highest p
 ---
 
 # Note on Computational Constraints: 
-## The localization algorithm used in this project is computationally intensive. The results were generated using an Intel Core i7-12750HX and an NVIDIA RTX 3050 Ti. Due to hardware limitations, the processing time was significant, which restricted the ability to perform extensive parameter tuning. The presented results reflect the best possible optimization achieved within these constraints.
+## The localization algorithm used in this project is computationally intensive. The results were generated using an Intel Core i7-12750HX and an NVIDIA RTX 3050 Ti. Due to hardware limitations, the processing time was significant, which restricted the ability to perform extensive parameter tuning. The presented results reflect the best possible optimization achieved within these constraints. Total 87900 likelihood cells were calculated on each steps. In the provided code.
 
 ---
 
