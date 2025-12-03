@@ -19,5 +19,5 @@ sensors:
   odometry:
     noise_std: 0.01            ## gaussian noise on velocity commands
 
-random_seed: 42
+random_seed: 5
 output_dir: "results"
