@@ -1,20 +1,5 @@
 """
-Markov Grid Based Localization (GPU)
-
-Main script to run Grid-Based (Markov) Localization, accelerated with CUDA/GPU.
-
-** This version is now FULLY SELF-CONTAINED and uses CuPy for GPU acceleration. **
-It requires an NVIDIA GPU, the CUDA Toolkit, and the 'cupy' library.
-
-**Changelog:**
-- Added 'GPU_ENABLED' flag to create a robust CPU-fallback mode.
-- Fixed 'AttributeError' crash when CuPy is not found.
-- Added 'scipy' as a standard import.
-- Added final average error calculation.
-- Added Gaussian belief initialization (using your 'hint').
-- REMOVED: All matplotlib plotting.
-- ADDED: Saves all results to a CSV file on your desktop.
-- CHANGED: Batch interval from 50 to 8.
+Sparse: 8
 """
 
 import numpy as np
@@ -30,7 +15,7 @@ from dataclasses import dataclass
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
 
-# --- Try to import GPU libraries ---
+# Try to import GPU libraries
 try:
     # We need both cupy and the cupy-enabled scipy extensions
     import cupy as cp
@@ -52,32 +37,25 @@ except ImportError:
         return cpu_distance_transform_edt(arr)
 
 
-# -----------------------------------------------------------------------------
 # CONFIGURATION
-# -----------------------------------------------------------------------------
-# All settings are in this dictionary. Update the paths to match your system.
-# *** IMPORTANT: All 3 paths MUST be FULL, ABSOLUTE paths ***
-# -----------------------------------------------------------------------------
 CONFIG = {
     'data': {
-        # --- 1. UPDATE THIS PATH ---
-        # Must be the FULL, ABSOLUTE path to your sensor data
+        # 1. UPDATE THIS PATH
         'sensor_data_csv_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\data\sensor_data_clean.csv',
         
-        # --- 2. UPDATE THESE PATHS ---
-        # Must be the FULL, ABSOLUTE paths to your map files
+        # 2. UPDATE THESE PATHS
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
         
-        # --- 3. NEW: Define output CSV path ---
-        # This will save the results to your Desktop.
-        'output_csv_path': os.path.join(os.path.expanduser('~'), 'Desktop', 'localization_results.csv')
+        # 3. NEW: Define output CSV path
+
+        'output_csv_path': os.path.join(os.path.expanduser('~'), 'Desktop', 'sparse_8_localization_results.csv')
     },
     'sensors': {
         'lidar': {
             'num_rays': 360,     # Total rays in the scan
             'fov_deg': 360,      # Field of view in degrees
-            'sparsity': 10,      # Use 1-in-10 rays (36 total) for speed.
+            'sparsity': 8,      # Use 1-in-8 rays
         }
     },
     'localization': {
@@ -85,23 +63,17 @@ CONFIG = {
         'likelihood_max_dist': 2.0,  # Max distance for likelihood (meters)
         'motion_diffusion_factor': 0.01, # Trust our (perfect) motion model more
         
-        # --- NEW: POSE HINT ---
-        # Set 'use_pose_hint' to True to use this.
+        # NEW: POSE HINT 
         'use_pose_hint': True,
         'initial_pose_hint': [-0.46, -0.55],     # (x_m, y_m)
         'initial_uncertainty_m': 0.5         # Standard deviation (0.5m)
-        # --- END OF NEW HINT ---
+        # END OF NEW HINT
     }
 }
-# -----------------------------------------------------------------------------
 # END OF CONFIGURATION
-# -----------------------------------------------------------------------------
 
 
-# -----------------------------------------------------------------------------
 # HELPER FUNCTIONS (Previously in localization_utils)
-# -----------------------------------------------------------------------------
-
 @dataclass
 class MapInfo:
     """ Container for map metadata """
@@ -136,15 +108,14 @@ def load_map(pgm_path, yaml_path):
         return None
     img_arr_cpu = np.array(img)
 
-    # convert to occupancy grid - trinary mode
-    # pgm: 255=white=free, 0=black=occupied
+    # convert to occupancy grid
     norm = img_arr_cpu / 255.0
     occ_grid_cpu = np.where(norm > (1 - free_thresh), 0.0,
                         np.where(norm < occ_thresh, 1.0, 0.5))
 
     h, w = occ_grid_cpu.shape
     
-    # --- GPU CHANGE ---
+    # GPU CHANGE
     # Move the final occupancy grid to the GPU (or keep as numpy if disabled)
     occ_grid_gpu = cp.asarray(occ_grid_cpu)
 
@@ -246,12 +217,10 @@ def gaussian_2d(x, y, mu_x, mu_y, sigma):
 def compute_likelihood_field(map_info, sigma=0.1, max_dist=2.0):
     """ precompute likelihood field for sensor model - GPU/CPU """
     
-    # --- GPU CHANGE ---
-    # map_info.occupancy_grid is already on the GPU (or is numpy)
+    # GPU CHANGE
     obs = (map_info.occupancy_grid > 0.5).astype(cp.float32)
 
     # distance transform - euclidean dist to nearest obstacle
-    # Use the imported GPU/CPU version
     dist = gpu_distance_transform_edt(1 - obs)
 
     # convert to meters
@@ -282,21 +251,19 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
     log_likelihood = 0.0
     num_valid = 0
 
-    # --- GPU CHANGE ---
+    # GPU CHANGE
     # Move scalar values to GPU for calculations
     robot_x_gpu = cp.float32(robot_x)
     robot_y_gpu = cp.float32(robot_y)
     robot_theta_gpu = cp.float32(robot_theta)
 
-    # --- GPU CHANGE ---
+    # GPU CHANGE
     # Perform calculations on GPU
     global_angles = robot_theta_gpu + scan_angles_gpu
     px_gpu = robot_x_gpu + scan_ranges_gpu * cp.cos(global_angles)
     py_gpu = robot_y_gpu + scan_ranges_gpu * cp.sin(global_angles)
 
     # --- GPU/CPU CHANGE ---
-    # This is a bottleneck: moving data back from GPU to CPU.
-    # If GPU is disabled, this is a simple numpy array copy.
     if GPU_ENABLED:
         px_cpu = px_gpu.get()
         py_cpu = py_gpu.get()
@@ -330,10 +297,7 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
         return log_likelihood / num_valid
     else:
         return 0.0 # No valid beams
-
-# -----------------------------------------------------------------------------
 # END OF HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
 
 
 def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
@@ -347,8 +311,7 @@ def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
     dx_cells = int(round(dx_m / map_info.resolution))
     dy_cells = int(round(dy_m / map_info.resolution))
     
-    # --- GPU CHANGE ---
-    # This is a simple "shift" model. (use cp.roll)
+    # GPU CHANGE
     predicted_belief = cp.roll(belief_grid_gpu, (dy_cells, dx_cells), axis=(0, 1))
     
     # Zero out probabilities that "leaked" from the other side
@@ -389,8 +352,7 @@ def correction_step(belief_grid_gpu, sensor_data, map_info, likelihood_field_gpu
     
     lidar_config = config['sensors']['lidar']
     
-    # --- GPU CHANGE ---
-    # Move sensor data to GPU (or keep as numpy if disabled)
+    # GPU CHANGE
     lidar_ranges_gpu = cp.asarray(sensor_data['ranges'])
     
     # Create an array of lidar angles (on GPU/CPU)
@@ -417,9 +379,7 @@ def correction_step(belief_grid_gpu, sensor_data, map_info, likelihood_field_gpu
     # Create grid of all possible cell coordinates (on GPU/CPU)
     y_coords, x_coords = cp.indices(belief_grid_gpu.shape)
     
-    # --- GPU/CPU BUG FIX ---
-    # Convert all grid coords to world coords (on CPU)
-    # This is a bottleneck!
+
     if GPU_ENABLED:
         x_coords_cpu = x_coords.get()
         y_coords_cpu = y_coords.get()
@@ -447,10 +407,9 @@ def correction_step(belief_grid_gpu, sensor_data, map_info, likelihood_field_gpu
     valid_wy = wy[valid_mask]
 
     # Calculate log-likelihood for all valid cells
-    # This loop is the main bottleneck.
     log_p_values = []
     
-    # --- GPU/CPU BUG FIX ---
+    # GPU/CPU BUG FIX
     if GPU_ENABLED:
         valid_wx_cpu = valid_wx.get()
         valid_wy_cpu = valid_wy.get()
@@ -524,7 +483,7 @@ def main():
         print(f"An error occurred loading the map: {e}")
         return
 
-    # --- 2. Pre-compute Likelihood Field ---
+    # 2. Pre-compute Likelihood Field
     print("Pre-computing likelihood field (this may take a moment)...")
     start_time = time.time()
     likelihood_field_gpu = compute_likelihood_field(
@@ -534,7 +493,7 @@ def main():
     )
     print(f"Likelihood field computed in {time.time() - start_time:.2f}s")
     
-    # --- 3. Initialize Belief (NOW WITH HINT) ---
+    # 3. Initialize Belief (NOW WITH HINT)
     print("Initializing belief grid...")
     
     use_hint = config['localization'].get('use_pose_hint', False)
@@ -578,9 +537,9 @@ def main():
         return
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
-    # --- END OF NEW INITIALIZE ---
+    # END OF NEW INITIALIZE
     
-    # --- 4. Load Sensor Data ---
+    # 4. Load Sensor Data
     print("Loading sensor data...")
     sensor_log = load_sensor_data(config)
     if not sensor_log:
@@ -588,20 +547,20 @@ def main():
         return
     print(f"Loaded {len(sensor_log)} full data points.")
     
-    # --- EDITED: BATCH THE DATA ---
-    batch_interval = 8 # <-- EDITED: Changed from 50 to 8
+    # EDITED: BATCH THE DATA
+    batch_interval = 8 # Changed from 50 to 8
     sensor_log = sensor_log[::batch_interval]
     print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
-    # --- END OF EDIT ---
+    # END OF EDIT
 
-    # --- 5. Run Localization Loop ---
+    # 5. Run Localization Loop 
     last_gt_pose = None
     total_steps = len(sensor_log)
     
-    # --- NEW: Initialize list to store errors ---
+    # NEW: Initialize list to store errors
     all_position_errors = []
     
-    # --- NEW: Setup CSV file for writing ---
+    # NEW: Setup CSV file for writing
     output_csv_path = config['data']['output_csv_path']
     print(f"Opening output CSV file at: {output_csv_path}")
     try:
@@ -616,7 +575,7 @@ def main():
         print(f"FATAL ERROR: Could not open CSV file for writing: {e}")
         print("Please check the path and permissions.")
         return
-    # --- END OF CSV SETUP ---
+    # END OF CSV SETUP
 
     for i, sensor_data in enumerate(sensor_log):
         print(f"\n--- Processing Timestamp {sensor_data['timestamp']} (Step {i+1}/{total_steps}) ---")
@@ -628,7 +587,7 @@ def main():
         
         gt_grid_x, gt_grid_y = world_to_grid(gt_x_m, gt_y_m, map_info)
 
-        # --- Prediction Step (Motion Model) ---
+        # Prediction Step (Motion Model)
         if last_gt_pose:
             dx_m = current_gt_pose[0] - last_gt_pose[0]
             dy_m = current_gt_pose[1] - last_gt_pose[1]
@@ -645,7 +604,7 @@ def main():
         else:
             print("  Skipping prediction step (first frame).")
 
-        # --- Correction Step (Sensor Model) ---
+        # Correction Step (Sensor Model)
         belief_grid_gpu = correction_step(
             belief_grid_gpu, 
             sensor_data, 
@@ -655,13 +614,11 @@ def main():
             verbose=True # Always print correction step details
         )
 
-        # --- Find Best Estimate & Print ---
-        # --- GPU/CPU BUG FIX ---
-        # Move data back to CPU for argmax and printing (if it was on GPU)
+        # Find Best Estimate & Print
         if GPU_ENABLED:
             belief_grid_cpu = belief_grid_gpu.get()
         else:
-            belief_grid_cpu = belief_grid_gpu # It's already a numpy array
+            belief_grid_cpu = belief_grid_gpu 
         
         est_grid_y, est_grid_x = np.unravel_index(
             np.argmax(belief_grid_cpu), 
@@ -672,12 +629,11 @@ def main():
         
         prob_at_gt = 0.0
         if 0 <= gt_grid_x < map_info.width and 0 <= gt_grid_y < map_info.height:
-             # --- TYPO FIX: Changed prob_at_gty to prob_at_gt ---
              prob_at_gt = belief_grid_cpu[gt_grid_y, gt_grid_x]
         else:
             print(f"  Warning: Ground truth ({gt_grid_x}, {gt_grid_y}) is outside map bounds (0-{map_info.width}, 0-{map_info.height}).")
 
-        # --- 6. Print and Compare ---
+        # 6. Print and Compare
         print("\n  --- Results ---")
         print(f"  Step Time: {time.time() - start_step_time:.2f}s")
         print(f"  Ground Truth (World): ({gt_x_m:.2f}m, {gt_y_m:.2f}m)")
@@ -685,16 +641,16 @@ def main():
         print(f"  Estimated Pos (World): ({est_x_m:.2f}m, {est_y_m:.2f}m)")
         print(f"  Estimated Pos (Grid):  ({est_grid_x}, {est_grid_y})")
         
-        # --- NEW: Calculate and store error ---
+        # NEW: Calculate and store error
         current_error_m = math.dist((gt_x_m, gt_y_m), (est_x_m, est_y_m))
         all_position_errors.append(current_error_m)
         print(f"  Position Error: {current_error_m:.3f} m")
-        # --- END OF NEW BLOCK ---
+        # END OF NEW BLOCK 
         
         print(f"  Highest Belief: {max_prob:.4e}")
         print(f"  Belief at GT:   {prob_at_gt:.4e}")
 
-        # --- 7. NEW: Write to CSV ---
+        # 7. NEW: Write to CSV
         csv_writer.writerow([
             sensor_data['timestamp'],
             gt_x_m, gt_y_m,
@@ -702,26 +658,25 @@ def main():
             current_error_m,
             max_prob
         ])
-        # --- END OF CSV WRITE ---
+        # END OF CSV WRITE
 
         # Update last pose for next iteration
-        # --- TYPO FIX: Corrected variable name ---
         last_gt_pose = current_gt_pose
     
     print("\n--- Localization Complete ---")
 
-    # --- NEW: Close CSV file ---
+    # NEW: Close CSV file 
     csv_file.close()
     print(f"Results saved to {output_csv_path}")
-    # --- END OF CSV CLOSE ---
+    # END OF CSV CLOSE
 
-    # --- NEW: Calculate and print average error ---
+    # NEW: Calculate and print average error
     if all_position_errors: # Avoid division by zero
         average_error_m = sum(all_position_errors) / len(all_position_errors)
         print("\n--- Final Summary ---")
         print(f"Processed {len(all_position_errors)} batched steps (1 every {batch_interval}).")
         print(f"Average Position Error: {average_error_m:.3f} m")
-    # --- END OF NEW BLOCK ---
+    # END OF NEW BLOCK
 
 if __name__ == "__main__":
     main()
