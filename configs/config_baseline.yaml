@@ -23,6 +23,6 @@ sensors:
     wheel_base: 0.160           # TurtleBot3 Burger wheel base (m)
     wheel_radius: 0.033         # TurtleBot3 Burger wheel radius (m)
 
-random_seed: 42               # For reproducible noise
+random_seed: 20               # For reproducible noise
 
 output_dir: "results"         # Where to save estimates and timing
