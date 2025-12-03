@@ -22,6 +22,9 @@ class CFG:
     COL_V = "v"
     COL_W = "w"
 
+    COL_ODOM_X = "odom_x"
+    COL_ODOM_Y = "odom_y"
+    COL_ODOM_TH = "odom_theta"
 
     COL_GT_X = "gt_x"
     COL_GT_Y = "gt_y"
@@ -128,7 +131,7 @@ class MapDT:
 
 
 def load_map_and_dt() -> MapDT:
-    img_path, res, origin, occ_t, free_t = load_ros_yaml(CFG.ROS_YAML)
+    img_path, res, origin, occ_t= load_ros_yaml(CFG.ROS_YAML)
     gray = load_pgm(img_path)
     occ = make_ogm_from_gray(gray, occ_t)
 
