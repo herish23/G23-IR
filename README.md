@@ -1,21 +1,54 @@
-## AMCL with KLD-Sampling Localisation Implementation
+## AMCL with KLD-Sampling Localisation Implementation and Experimentation
 
-This implementation demonstrates AMCL+KLD algorithm for mobile robot localisation with systematic calibration and comprehensive robustness testing under three stress conditions:
+This implementation demonstrates AMCL+KLD algorithm for the project titled "Comparative Evaluation of EKF, Markov Grid, and AMCL with KLD-Sampling Localisation for Mobile Robots". The algorithm was evaluated under these stress tests:
 
-- **Odometry Noise:** 10%-80% noise levels (8 test conditions)
-- **LiDAR Data Sparsity:** 2×-32× beam reduction (5 test conditions)
-- **Kidnapped Robot Problem:** Global relocalization (Kidnap Robot Problem)
+- **LiDAR Sensor Noise** 
+- **LiDAR Data Sparsity**
+- **Kidnapped Robot Problem** 
 
-**Baseline Accuracy: 0.306m**
+---
+
+## AMCL+KLD Implementation
+This implementation was built from scratch in Python using the following mechanisms which can be found in [`amcl.py`](algorithms/amcl/amcl.py):
+
+### Core Components
+
+1. **Particle Representation :** Each particle represents a pose hypothesis (x, y, θ) with weight
+
+2. **Motion Model (Odometry-based Prediction) :** Sample-based motion update with four noise parameters (α₁-α₄)
+
+3. **Sensor Model (Likelihood Field)**
+   - Pre-computed likelihood field using distance transform
+   - Beam subsampling: 60 beams
+
+4. **Sampling**
+
+   a) **Low Variance sampling (LVS)**
+   - Systematic sampling that preserves particle diversity
+
+   b) **KLD-Sampling (Adaptive Particle Count)**
+   - Minimum particles of 1000 and Maximum of 5000
+   - Bin-based approach (0.5m × 0.5m × angular bins)
+
+   c) **N_eff Threshold**
+   - Triggers resampling when N_eff < 60% of total particles
+
+### Algorithm Flow
+
+1. **Initialize:** Spawn particles around known start
+2. **Predict:** Apply motion model with odometry noise
+3. **Update:** Weight particles based on LiDAR likelihood
+4. **Resample (conditional):** Trigger LVS when N_eff < threshold, apply KLD-sampling
+5. **Estimate:** Return weighted mean pose
+
+---
 ### Baseline Performance (After Calibration)
-Check the callibration section for this tuning process 
+Check the calibration section to know more about the tuning process. 
 
 | Metric | Value |
 |--------|-------|
 | **RMSE** | 0.306 m |
 | **Mean Error** | 0.306 m |
-| **Max Error** | 0.572 m |
-| **Std Deviation** | 0.135 m |
 | **Avg Particles** | 1000-1500 |
 | **Avg Runtime** | 443 ms/step |
 
@@ -25,7 +58,7 @@ Check the callibration section for this tuning process
 
 ```
 algorithms/amcl/
-├── calibration/                    # Folder for the Calibration (Methodology for tuning)
+├── calibration/                    # Calibration (Methodology for tuning)
 ├── amcl.py                         # Base AMCL+KLD implementation
 ├── noise_test_amcl.py              # Noise experiments script
 ├── sparsity_test_amcl.py           # Data sparsity script
@@ -40,7 +73,6 @@ algorithms/amcl/
 
 ## Dependencies & Packages
 
-### Standard Python Libraries
 - **NumPy**
 - **OpenCV (cv2)**
 - **Matplotlib**
@@ -59,11 +91,8 @@ algorithms/amcl/
 Ensure the following files are available:
 ```
 data/sensor_data_clean.csv
-data/sensor_data_sparse_2.csv
-data/sensor_data_sparse_4.csv
-data/sensor_data_sparse_8.csv
-data/sensor_data_sparse_16.csv
-data/sensor_data_sparse_32.csv
+data/sensor_data_sparse_*.csv        # 2, 4, 8, 16, 32
+configs/config_noise_*.yaml          # 10, 20, 30, 40, 50, 60, 70, 80
 maps/epuck_world_map.pgm
 maps/epuck_world_map.yaml
 ```
@@ -71,6 +100,7 @@ maps/epuck_world_map.yaml
 ---
 
 ### 1. Baseline Test
+This runs the calibrated AMCL+KLD algorithm on clean sensor data to establish baseline performance.
 
 **Run baseline experiment:**
 ```bash
@@ -78,7 +108,7 @@ cd algorithms/amcl
 python amcl.py
 ```
 
-This runs the calibrated AMCL+KLD algorithm on clean sensor data to establish baseline performance.
+
 
 ---
 
@@ -111,6 +141,8 @@ python sparsity_test_amcl.py --sparsity 16
   - **16×** = 22 beams (every 16th ray)
   - **32×** = 11 beams (every 32nd ray)
 
+Each skip is same as skipping the columns of LiDAR scans from the dataset.
+Note that we took the whole numbers instead of the actual decimal value as decimal values are not valid column indices.
 
 ### 4. Kidnapped Robot Test
 - Robot tracks normally for 10 seconds
@@ -190,6 +222,7 @@ Parameters were tuned through 4-stage systematic optimization:
   - DOI: [10.1007/s00170-021-07437-0](https://doi.org/10.1007/s00170-021-07437-0)
 
 ---
+
 
 
 
