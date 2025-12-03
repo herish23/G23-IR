@@ -2,13 +2,9 @@
 Markov Grid Based Localization (GPU) - Single File Experiment
 
 This is a self-contained script to run a single localization experiment.
-It runs the localization and VISUALIZES the result in a live plot.
-It does NOT save a CSV file.
-
-SETTINGS:
-- Noise: 10%
-- Sparsity: 10
-- Batch Interval: 32
+All configuration is in the 'CONFIG' dictionary at the top.
+It loads clean data, applies the noise specified in 'CONFIG', 
+runs the localization, and saves the results to a CSV.
 """
 
 import numpy as np
@@ -23,10 +19,6 @@ from PIL import Image
 from dataclasses import dataclass 
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
-
-# --- PLOTTING IMPORT ---
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 
 # --- Try to import GPU libraries ---
 try:
@@ -53,9 +45,12 @@ except ImportError:
 # -----------------------------------------------------------------------------
 # CONFIGURATION
 # -----------------------------------------------------------------------------
+# All settings are in this dictionary. Update the paths to match your system.
+# *** IMPORTANT: All 3 paths MUST be FULL, ABSOLUTE paths ***
+# -----------------------------------------------------------------------------
 CONFIG = {
     'experiment': {
-        'name': "noise_10_percent_sparse10_batch32"
+        'name': "noise_20_percent_sparse10_batch32" # <-- EDITED
     },
     'data': {
         # --- 1. Path to the CLEAN sensor data ---
@@ -64,6 +59,9 @@ CONFIG = {
         # --- 2. Paths to your map files ---
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
+        
+        # --- 3. Path to save the output CSV ---
+        'output_csv_path': os.path.join(os.path.expanduser('~'), 'Desktop', 'localization_results_20_percent_sparse10_batch32.csv') # <-- EDITED
     },
     'sensors': {
         'lidar': {
@@ -71,12 +69,12 @@ CONFIG = {
             'fov_deg': 360,      # Field of view in degrees
             'max_range': 3.5,    # Max sensor range
             
-            # --- NOISE SETTINGS ---
+            # --- THIS IS WHERE THE NOISE IS DEFINED ---
             'noise_std': 0.02,     # 2cm Gaussian noise
-            'outlier_rate': 0.10,  # 10% of readings are random
-            # ----------------------
+            'outlier_rate': 0.10,  # 20% of readings are random
+            # --- END OF NOISE DEFINITION ---
             
-            'sparsity': 10,        # Use 1-in-10 rays
+            'sparsity': 10,       
         }
     },
     'localization': {
@@ -92,6 +90,8 @@ CONFIG = {
     },
     'random_seed': 42
 }
+# -----------------------------------------------------------------------------
+# END OF CONFIGURATION
 # -----------------------------------------------------------------------------
 
 
@@ -332,8 +332,9 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
         return 0.0 
 
 # -----------------------------------------------------------------------------
-# LOCALIZATION LOGIC
+# END OF HELPER FUNCTIONS
 # -----------------------------------------------------------------------------
+
 
 def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
     """
@@ -473,6 +474,10 @@ def correction_step(belief_grid_gpu, sensor_data, map_info, likelihood_field_gpu
         return final_belief / cp.sum(final_belief)
 
 def main():
+    """
+    This is the main function that runs a single experiment.
+    """
+    
     # Use the global CONFIG object
     config = CONFIG 
     print(f"Loading configuration from internal CONFIG dictionary...")
@@ -484,19 +489,14 @@ def main():
             config['data']['map_pgm_path'], 
             config['data']['map_yaml_path']
         )
-        if map_info is None: # Check if load_map failed
-            return
+        if map_info is None: return
         print(f"Map loaded: {map_info.width}x{map_info.height} cells @ {map_info.resolution:.3f} m/cell")
-    except FileNotFoundError as e:
-        print(f"Error loading map YAML: {e}")
-        print("Please ensure 'map_yaml_path' in the global CONFIG dictionary is correct.")
-        return
     except Exception as e:
         print(f"An error occurred loading the map: {e}")
         return
 
     # --- 2. Pre-compute Likelihood Field ---
-    print("Pre-computing likelihood field (this may take a moment)...")
+    print("Pre-computing likelihood field...")
     start_time = time.time()
     likelihood_field_gpu = compute_likelihood_field(
         map_info, 
@@ -538,7 +538,7 @@ def main():
     belief_grid_gpu[map_info.occupancy_grid > 0.5] = 0.0
     
     if cp.sum(belief_grid_gpu) == 0:
-        print("Error: Map seems to be entirely obstacles (or hint is in a wall). Cannot initialize belief.")
+        print("Error: Map seems to be entirely obstacles (or hint is in a wall).")
         return
         
     belief_grid_gpu = belief_grid_gpu / cp.sum(belief_grid_gpu)
@@ -563,50 +563,27 @@ def main():
     total_steps = len(sensor_log)
     all_position_errors = []
     
-    # --- PLOTTING: Setup the interactive plot ---
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(12, 12)) # Make it slightly bigger
-    
-    # Get map data on CPU for plotting
-    if GPU_ENABLED:
-        map_data_cpu = map_info.occupancy_grid.get()
-    else:
-        map_data_cpu = map_info.occupancy_grid
-        
-    # Calculate map extent in meters
-    x_min = map_info.origin_x
-    y_min = map_info.origin_y
-    x_max = map_info.origin_x + (map_info.width * map_info.resolution)
-    y_max = map_info.origin_y + (map_info.height * map_info.resolution)
-    map_extent = [x_min, x_max, y_min, y_max]
-
-    # Plot the map background
-    ax.imshow(map_data_cpu, cmap='gray', origin='lower', extent=map_extent)
-    
-    # Create empty plot elements to update later
-    gt_dot, = ax.plot([], [], 'go', markersize=10, label='Ground Truth')
-    est_dot, = ax.plot([], [], 'rx', markersize=12, mew=2, label='Estimated')
-    
-    # Create the belief heatmap overlay
-    # We use a dummy array to start
-    belief_viz = ax.imshow(np.zeros_like(map_data_cpu), cmap='viridis', 
-                           origin='lower', extent=map_extent, 
-                           alpha=0.6, vmin=0.0, vmax=0.01)
-    
-    ax.set_xlabel("X (meters)")
-    ax.set_ylabel("Y (meters)")
-    ax.set_title("Markov Localization Live View")
-    ax.legend()
-    
-    # --- PAUSE FOR FULLSCREEN ---
-    print("\n\n--- PLOT INITIALIZED ---")
-    print("Plot window is open. You have 10 seconds to make it full screen and start recording.")
-    plt.show(block=False)
-    plt.pause(10.0) # Pause for 10 seconds
-    # ----------------------------
+    # --- Setup CSV file for writing ---
+    output_csv_path = config['data']['output_csv_path']
+    print(f"Opening output CSV file at: {output_csv_path}")
+    try:
+        csv_file = open(output_csv_path, 'w', newline='')
+        csv_writer = csv.writer(csv_file)
+        # Write header
+        csv_writer.writerow([
+            "timestamp", "gt_x", "gt_y", 
+            "est_x", "est_y", "position_error_m", "max_belief"
+        ])
+    except IOError as e:
+        print(f"FATAL ERROR: Could not open CSV file for writing: {e}")
+        return
+    # --- END OF CSV SETUP ---
 
     for i, sensor_data in enumerate(sensor_log):
-        print(f"\rProcessing Step {i+1}/{total_steps}", end='')
+        # We will just print a simple progress bar
+        progress = (i + 1) / total_steps
+        end_char = '\n' if (i + 1) == total_steps else ''
+        print(f"\rProcessing Step {i+1}/{total_steps} [{'#'*int(progress*20):<20}]", end=end_char)
         
         start_step_time = time.time()
         
@@ -635,7 +612,7 @@ def main():
             map_info, 
             likelihood_field_gpu, 
             config,
-            verbose=False 
+            verbose=False # Keep it quiet during batch runs
         )
 
         # --- Find Best Estimate ---
@@ -651,34 +628,34 @@ def main():
         est_x_m, est_y_m = grid_to_world(est_grid_x, est_grid_y, map_info)
         max_prob = np.max(belief_grid_cpu)
         
+        # --- Store Error ---
         current_error_m = math.dist((gt_x_m, gt_y_m), (est_x_m, est_y_m))
         all_position_errors.append(current_error_m)
 
-        # --- PLOTTING: Update the live plot ---
-        gt_dot.set_data([gt_x_m], [gt_y_m])
-        est_dot.set_data([est_x_m], [est_y_m])
-        
-        # Update the belief heatmap
-        belief_viz.set_data(belief_grid_cpu)
-        belief_viz.set_clim(vmin=0, vmax=np.clip(max_prob, 0.001, 1.0))
-        
-        # Redraw the canvas
-        fig.canvas.draw()
-        fig.canvas.flush_events()
-        plt.pause(0.01) 
-        # --- END OF PLOTTING ---
+        # --- Write to CSV ---
+        csv_writer.writerow([
+            sensor_data['timestamp'],
+            gt_x_m, gt_y_m,
+            est_x_m, est_y_m,
+            current_error_m,
+            max_prob
+        ])
 
         last_gt_pose = current_gt_pose
     
+    # --- Close CSV file ---
+    csv_file.close()
+    print(f"\nResults saved to {output_csv_path}")
+
     # --- Calculate and return average error ---
     if all_position_errors: 
         average_error_m = sum(all_position_errors) / len(all_position_errors)
-        print(f"\nAverage Position Error: {average_error_m:.3f} m")
+        print(f"Average Position Error: {average_error_m:.3f} m")
     
     print("\n--- Localization Complete ---")
-    
-    plt.ioff()
-    plt.show() # Keep plot open at the end
 
 if __name__ == "__main__":
+    """
+    This is the main entry point to run a single experiment.
+    """
     main()

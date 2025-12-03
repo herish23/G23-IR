@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from scipy.ndimage import distance_transform_edt as cpu_distance_transform_edt
 import scipy
 
-# --- Try to import GPU libraries ---
 try:
     # We need both cupy and the cupy-enabled scipy extensions
     import cupy as cp
@@ -32,21 +31,13 @@ except ImportError:
     def gpu_distance_transform_edt(arr):
         return cpu_distance_transform_edt(arr)
 
-
-# -----------------------------------------------------------------------------
 # CONFIGURATION
-# -----------------------------------------------------------------------------
-# All settings are in this dictionary. Update the paths to match your system.
-# *** IMPORTANT: All 3 paths MUST be FULL, ABSOLUTE paths ***
-# -----------------------------------------------------------------------------
 CONFIG = {
     'data': {
         # --- 1. UPDATE THIS PATH ---
-        # Must be the FULL, ABSOLUTE path to your sensor data
         'sensor_data_csv_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\data\sensor_data_clean.csv',
         
         # --- 2. UPDATE THESE PATHS ---
-        # Must be the FULL, ABSOLUTE paths to your map files
         'map_pgm_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.pgm',
         'map_yaml_path': r'C:\Users\Rohit\Desktop\Intelligent Robotics\G23-Intelligent-Robotics\maps\epuck_world_map.yaml',
     },
@@ -54,7 +45,7 @@ CONFIG = {
         'lidar': {
             'num_rays': 360,     # Total rays in the scan
             'fov_deg': 360,      # Field of view in degrees
-            'sparsity': 1,       # <--- MODIFIED: Use ALL rays (360 total) for max accuracy.
+            'sparsity': 1,       # Use ALL rays (360 total) for max accuracy.
         }
     },
     'localization': {
@@ -67,14 +58,7 @@ CONFIG = {
         'initial_uncertainty_m': 0.5          # Standard deviation (0.5m)
     }
 }
-# -----------------------------------------------------------------------------
-# END OF CONFIGURATION
-# -----------------------------------------------------------------------------
 
-
-# -----------------------------------------------------------------------------
-# HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
 
 @dataclass
 class MapInfo:
@@ -282,10 +266,8 @@ def compute_scan_likelihood_field(scan_ranges_gpu, scan_angles_gpu, robot_x, rob
     else:
         return 0.0 # No valid beams
 
-# -----------------------------------------------------------------------------
-# CORE MARKOV LOCALIZATION STEPS
-# -----------------------------------------------------------------------------
 
+# CORE MARKOV LOCALIZATION STEPS
 def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
     """
     Updates the belief grid based on a motion model P(x_t | u_t, x_t-1).
@@ -311,7 +293,6 @@ def prediction_step(belief_grid_gpu, motion, map_info, diffusion_factor):
         predicted_belief[:, dx_cells:] = 0
 
     # 2. Diffusion Model (Uncertainty Spread)
-    # Mix with a small uniform probability to account for noise
     uniform_prob = 1.0 / belief_grid_gpu.size
     final_belief = predicted_belief * (1.0 - diffusion_factor) + \
                    (uniform_prob * diffusion_factor)
@@ -529,11 +510,9 @@ def main():
     print(f"Loaded {len(sensor_log)} full data points.")
     
     # --- EDITED: BATCH THE DATA ---
-    # MODIFICATION: Changed batch_interval from 50 to 32
     batch_interval = 32 
     sensor_log = sensor_log[::batch_interval]
     print(f"Batched data to {len(sensor_log)} steps (1 every {batch_interval}).")
-    # --- END OF EDIT ---
 
     # --- 5. Run Localization Loop ---
     last_gt_pose = None
@@ -580,7 +559,6 @@ def main():
         )
 
         # --- Find Best Estimate & Print ---
-        # Move data back to CPU for argmax and printing
         if GPU_ENABLED:
             belief_grid_cpu = belief_grid_gpu.get()
         else:
