@@ -102,7 +102,7 @@ The system estimates the robot's location by finding the cell with the highest p
 
 ## Limitations
 
-###1. The "Curse of Dimensionality" (Computational Cost)
+### 1. The "Curse of Dimensionality" (Computational Cost)
 The most severe limitation of grid-based Markov Localization is its computational intensity. The algorithm divides the robot's state space (X, Y, and Orientation $\theta$) into a discrete grid. It must update the probability for every single cell in this grid at every time step.
 
 #### Exponential Scaling: If you want to increase the accuracy, you must increase the resolution of the grid. If you double the resolution of a 3D grid ($x, y, \theta$), the number of cells increases by a factor of 8 ($2^3$).
