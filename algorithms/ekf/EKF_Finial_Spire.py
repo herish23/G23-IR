@@ -599,6 +599,8 @@ def main():
         gt_x = gt_y = gt_th = None
         error_m = None
         if has_gt(row):
+            #Here, I manually adjusted the x/y directions.
+            #Otherwise, it wouldn't match the coordinate system of the map.
             gx = float(row[CFG.COL_GT_Y])
             gy = float(row[CFG.COL_GT_X])
             gth = float(row[CFG.COL_GT_TH])
