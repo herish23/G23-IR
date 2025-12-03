@@ -35,7 +35,7 @@ class CFG:
     DT_DEFAULT = 0.02
 
 
-    NOISE_YAML = r"G:\Python\G23-Intelligent-Robotics\configs\config_noise_80.yaml"
+    NOISE_YAML = r"G:\Python\G23-Intelligent-Robotics\configs\config_sparse_4.yaml"
     with open(NOISE_YAML, "r", encoding="utf-8") as f:
         exp_cfg = yaml.safe_load(f)
 
@@ -239,7 +239,7 @@ def implicit_update_once(
 
     n_all = len(ranges)
     if n_all == 0:
-        return x, P, 0
+        return x, P
 
     sigma_r = float(CFG.R_sigma)
     pts = laser_endpoints_in_world(x, ranges, ang_min, ang_inc)
@@ -257,7 +257,7 @@ def implicit_update_once(
             use[i] = False
 
     if not np.any(use):
-        return x, P, 0
+        return x, P
 
     DTs_u = DTs[use]
     Gxs_u = Gxs[use]
@@ -513,8 +513,8 @@ def main():
         gt_x = gt_y = gt_th = None
         error_m = None
         if has_gt(row):
-            gx = float(row[CFG.COL_GT_Y])
-            gy = float(row[CFG.COL_GT_X])
+            gx = float(row[CFG.COL_GT_X])
+            gy = float(row[CFG.COL_GT_Y])
             gth = float(row[CFG.COL_GT_TH])
             gt_x, gt_y, gt_th = gx, gy, gth
             error_m = math.hypot(x[0] - gx, x[1] - gy)
