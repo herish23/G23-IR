@@ -1,82 +1,40 @@
-# Comparative Evaluation of EKF, Markov Grid, and Adaptive Monte Carlo (AMCL with KLD-Sampling) Localization for Mobile Robots
+# EKF-OGM with Implicit Observation Model
 
 ---
 
-## Running the Simulation
+## Core Computational and Data Processing Libraries
+* NumPy: It is a scientific computing library in Python that is mainly used for efficiently handling multi-dimensional arrays and performing matrix operations. A large number of matrix calculations in the EKF require the use of Numpy.
+* SciPy: This project mainly uses functions to perform Euclidean distance transformation (EDT) on binary occupancy grid maps, and plays a significant role in generating the distance field required for the implicit observation model.
+* OpenCV（cv2）: Trajectory visualization and video generation 
+* Pillow:Read the map image and convert it into a NumPy array.
 
-To start:
+## The overall workflow of the code and the external configuration mechanism
 
-1. Open Webots
-2. Load the world file: `worlds/exp.wbt`
+### How it Works 
 
-The world has a TurtleBot3 with LiDAR on a checkboard arena with 5 wooden box obstacles.
+Map loading:
 
----
+* The program through `CFG.ROS_YAML`Load the `.yaml` configuration file of the ROS map from the specified path.
+* The noise and sparse used in the experiment are uniformly managed through independent `.yaml` configuration files in configs.
+* The sparsity configuration is specified by` sensors.lidar`.sparsity in the` yaml` file and is mapped to` CFG.BEAM_STRIDE` in the program.
 
-## Data Collection
+EKF-OGM Main Cycle and Result Output：
 
-### How it Works
+*  Motion Prediction – Implicit Observation Update – Error Computation – Result Saving and Trajectory Video Generation
 
-The `data_logger` controller runs the robot through a predefined trajectory and collects sensor data for offline processing. It logs:
+## Main Cycle
 
-* LiDAR range readings (360 points)
-* Commanded velocities (v, w)
-* Ground truth position (x, y, theta) from Webots supervisor
+### Motion Prediction:
+By using the linear and angular velocities of the odometer, the current pose of the robot's motion model is forward-calculated, and the covariance is propagated for state estimation.
 
-All data is saved to:
+### Implicit Observation Update:
+By constructing implicit constraints based on the distance values of laser endpoints in the distance transformation map, the laser points are aligned with the boundary of the obstacle, thereby correcting the pose estimation of the robot.
 
-```
-data/sensor_data_clean.csv
-```
-## Trajectories
+### Iterative Update
+In each time step, the implicit observation updates are iterated multiple times to continuously refine the current pose estimation result.
 
-Trajectory files are in `maps/traj/`:
-
-* **traj_debug_square.csv** — Simple 0.20m x 0.20m square path (default). Good for initial testing.
-* **traj_eval_complex.csv** — Longer, more complex path for full evaluation.
-
-You can change which trajectory is used by editing the `TRAJ_PATH` variable in `controllers/data_logger/data_logger.py` or set the `TRAJ` environment variable.
-
----
-
-## Map Files
-
-The map files needed for localization are in `maps/`:
-
-* `epuck_world_map.pgm` — occupancy grid map
-* `epuck_world_map.yaml` — map metadata (resolution, origin, etc)
-
-These were generated from the Webots world and match the 5 box obstacles in the simulation.
-
-**Note:** If you change the world layout, you'll need to regenerate these files.
-
----
-
-## Configuration Files
-
-Multiple config files are provided in `configs/` to test different conditions:
-
-* `config_baseline.yaml` — no extra noise
-* `config_noise_XX.yaml` — adds 10%-80% noise to sensors
-* `config_init_X.yaml` — tests recovery from wrong initial pose
-* `config_sparse_4.yaml` — uses only 1/4 of LiDAR points
-
-These let you test how robust each algorithm is under different conditions.
-
----
-
-## Offline Processing
-
-After collecting data, you'll run the three localization algorithms (EKF, Markov Grid, AMCL) on the saved CSV data. Each algorithm will:
-
-1. Load the sensor data
-2. Process odometry + LiDAR readings
-3. Estimate robot position at each timestep
-4. Compare against ground truth to calculate error metrics
-
-This setup lets us do fair comparisons since all algorithms process the exact same data.
-
----
+## Algorithms for Noise Experiments and Sparsity Experiments
+The code used in the separation degree experiment was basically the same as that in the noise experiment, with only minor modifications made. Therefore, in the separation degree experiment, some of the variables adopt the naming convention used in the noise experiment.
 
 
 
