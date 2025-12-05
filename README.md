@@ -33,6 +33,8 @@ This implementation was built from scratch in Python using the following mechani
    c) **N_eff Threshold**
    - Triggers resampling when N_eff < 60% of total particles
 
+**No particle injection or random spread od particles was implemented as this is a textbook based implementation and not packaged version of AMCL + KLD-Sampling**
+
 ### Algorithm Flow
 
 1. **Initialize:** Spawn particles around known start
@@ -165,7 +167,7 @@ python kidnap_test_amcl.py
 
 Parameters were tuned through 4-stage systematic optimization:
 
-1. **Baseline** - Default Fox et al. parameters from literature
+1. **Baseline** - Default parameters from literature
 2. **Sensor Model** - Likelihood field tuning (beams, sigma_hit, z_hit/z_rand)
 3. **Motion Model** - Odometry noise parameters (alpha1-4)
 4. **KLD-Sampling** - Adaptive resampling (epsilon, bin_size, n_min/n_max)
@@ -186,7 +188,7 @@ Parameters were tuned through 4-stage systematic optimization:
 | `alpha3` | 0.02 | Translation noise from translation |
 | `alpha4` | 0.02 | Translation noise from rotation |
 | `epsilon` | 0.05 | KLD error tolerance |
-| `bin_size` | 0.5 | Spatial discretization for KLD (m) |
+| `bin_size` | 0.5 | Spatial discretisation for KLD (m) |
 | `z_quantile` | 2.58 | Z-score for 99% confidence (KLD) |
 | `neff_threshold` | 0.6 | Resampling trigger (60% of particles) |
 
