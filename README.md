@@ -194,11 +194,20 @@ Parameters were tuned through 4-stage systematic optimization:
 
 ---
 
+## GenAI Usage
 
+AI tools such as [ChatGPT](https://chatgpt.com/) were used to aid with the understanding of concepts and not to code the project. The usages are shown below.
+
+| Usage | Prompt |
+|-------|--------|
+| Dissect the algorithm | Hey can you dissect the LVS algorithm given above into more understandable line by line so I can understand it and do it by myself |
+| Math underflowing | I do not understand why my particles always return 0 regardless the state can you check help me break down this math function |
+| Adding markers | Based on this opencv documentation I want you to tell me which part of the parameter should I modify to add a marker to the video |
+
+---
 
 ## Credits & References
 
-### Core Algorithm Implementation
 
 **Probabilistic Robotics:**
 - S. Thrun, "Probabilistic robotics," *Communications of the ACM*, vol. 45, no. 3, pp. 52–57, Mar. 2002.
