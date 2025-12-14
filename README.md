@@ -50,7 +50,6 @@ Check the calibration section to know more about the tuning process.
 | Metric | Value |
 |--------|-------|
 | **RMSE** | 0.306 m |
-| **Mean Error** | 0.306 m |
 | **Avg Particles** | 1000-1500 |
 | **Avg Runtime** | 443 ms/step |
 
